@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Warm Beige Palette */
+    --background: 38 33% 95%;
+    --foreground: 25 25% 14%;
+
+    --card: 36 40% 97%;
+    --card-foreground: 25 25% 14%;
+
+    --popover: 36 40% 97%;
+    --popover-foreground: 25 25% 14%;
+
+    /* Deep warm brown as primary */
+    --primary: 25 40% 22%;
+    --primary-foreground: 38 33% 95%;
+
+    /* Soft sand secondary */
+    --secondary: 38 25% 89%;
+    --secondary-foreground: 25 25% 22%;
+
+    --muted: 38 20% 91%;
+    --muted-foreground: 25 15% 48%;
+
+    /* Muted gold accent */
+    --accent: 38 55% 88%;
+    --accent-foreground: 25 40% 22%;
+
+    --destructive: 4 65% 50%;
+    --destructive-foreground: 38 33% 95%;
+
+    --border: 35 20% 86%;
+    --input: 35 20% 88%;
+    --ring: 25 40% 35%;
+
+    /* Chart tones — warm neutrals */
+    --chart-1: 25 45% 35%;
+    --chart-2: 38 50% 55%;
+    --chart-3: 15 35% 45%;
+    --chart-4: 45 40% 65%;
+    --chart-5: 20 30% 60%;
+
+    --radius: 0.875rem;
+
+    /* Sidebar — slightly darker warm cream */
+    --sidebar-background: 35 30% 93%;
+    --sidebar-foreground: 25 25% 18%;
+    --sidebar-primary: 25 40% 22%;
+    --sidebar-primary-foreground: 38 33% 95%;
+    --sidebar-accent: 38 40% 87%;
+    --sidebar-accent-foreground: 25 40% 22%;
+    --sidebar-border: 35 18% 86%;
+    --sidebar-ring: 25 40% 35%;
+
+    --font-serif: 'DM Serif Display', serif;
+    --font-sans: 'DM Sans', sans-serif;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Subtle texture overlay on background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c4a882' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
