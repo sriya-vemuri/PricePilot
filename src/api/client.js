@@ -9,11 +9,10 @@
 
 import { ApiError, messageForApiError } from './errors';
 
-const meta = /** @type {{ env?: { VITE_API_BASE_URL?: string; PROD?: boolean } }} */ (import.meta);
 
 const API_BASE_URL =
-  meta.env?.VITE_API_BASE_URL ||
-  (meta.env?.PROD ? '' : 'http://127.0.0.1:8000');
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000');
 
 export function getApiBaseUrl() {
   return String(API_BASE_URL || '').trim().replace(/\/$/, '');
