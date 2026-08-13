@@ -1,28 +1,44 @@
 /**
  * Shared HTTP client for the PricePilot FastAPI backend.
- * Base URL comes from VITE_API_BASE_URL (default: http://127.0.0.1:8000).
+ *
+ * Base URL:
+ * - VITE_API_BASE_URL when set
+ * - production default: same-origin (empty string)
+ * - development default: http://127.0.0.1:8000
  */
 
 import { ApiError, messageForApiError } from './errors';
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:8000';
+const meta = /** @type {{ env?: { VITE_API_BASE_URL?: string; PROD?: boolean } }} */ (import.meta);
+
+const API_BASE_URL =
+  meta.env?.VITE_API_BASE_URL ||
+  (meta.env?.PROD ? '' : 'http://127.0.0.1:8000');
 
 export function getApiBaseUrl() {
-  const meta = /** @type {{ env?: { VITE_API_BASE_URL?: string } }} */ (import.meta);
-  const configured = meta.env?.VITE_API_BASE_URL;
-  if (typeof configured === 'string' && configured.trim()) {
-    return configured.trim().replace(/\/$/, '');
-  }
-  return DEFAULT_BASE_URL;
+  return String(API_BASE_URL || '').trim().replace(/\/$/, '');
 }
 
 /**
  * @param {string} path
- * @param {RequestInit & { params?: Record<string, string | number | undefined> }} [options]
+ * @param {Record<string, string | number | undefined> | undefined} params
  */
-export async function apiRequest(path, options = {}) {
-  const { params, headers, ...init } = options;
-  const url = new URL(path.startsWith('http') ? path : `${getApiBaseUrl()}${path}`);
+function buildRequestUrl(path, params) {
+  const base = getApiBaseUrl();
+  /** @type {URL} */
+  let url;
+  if (path.startsWith('http')) {
+    url = new URL(path);
+  } else if (base) {
+    url = new URL(`${base}${path.startsWith('/') ? path : `/${path}`}`);
+  } else {
+    // Same-origin production: resolve against the current page origin.
+    const origin =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'http://localhost';
+    url = new URL(path.startsWith('/') ? path : `/${path}`, origin);
+  }
 
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
@@ -31,6 +47,16 @@ export async function apiRequest(path, options = {}) {
       }
     });
   }
+  return url;
+}
+
+/**
+ * @param {string} path
+ * @param {RequestInit & { params?: Record<string, string | number | undefined> }} [options]
+ */
+export async function apiRequest(path, options = {}) {
+  const { params, headers, ...init } = options;
+  const url = buildRequestUrl(path, params);
 
   let response;
   try {
