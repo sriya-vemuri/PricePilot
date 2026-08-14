@@ -87,7 +87,7 @@ class TestCreateAnalysis:
 
     def test_pricing_failure_returns_500(self, tmp_path):
         class FailingPricingOrchestrator:
-            async def create_analysis(self, _request):
+            async def create_analysis(self, _request, user_id: str):
                 raise PricingCalculationError("Unexpected pricing-engine failure") from RuntimeError("boom")
 
         with api_client(unique_tmp(tmp_path), orchestrator=FailingPricingOrchestrator()) as client:
@@ -100,7 +100,7 @@ class TestCreateAnalysis:
 
     def test_database_failure_returns_500(self, tmp_path):
         class FailingDbOrchestrator:
-            async def create_analysis(self, _request):
+            async def create_analysis(self, _request, user_id: str):
                 raise DatabaseError("Failed to save analysis") from RuntimeError("sqlite exploded")
 
         with api_client(unique_tmp(tmp_path), orchestrator=FailingDbOrchestrator()) as client:

@@ -13,6 +13,12 @@ class TestSchema:
         inspector = inspect(engine)
         tables = set(inspector.get_table_names())
         assert {"analyses", "market_data", "market_cache"}.issubset(tables)
+        columns = {col["name"]: col for col in inspector.get_columns("analyses")}
+        assert columns["user_id"]["nullable"] is True
+        assert "user_id" not in {col["name"] for col in inspector.get_columns("market_data")}
+        assert "user_id" not in {col["name"] for col in inspector.get_columns("market_cache")}
+        indexes = inspector.get_indexes("analyses")
+        assert any(ix.get("name") == "ix_analyses_user_id" for ix in indexes)
 
     def test_cache_key_is_unique(self, session):
         session.add(cache_from_upsert(_cache_upsert()))

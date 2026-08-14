@@ -14,7 +14,12 @@ from app.models.enums import (
 )
 from app.repositories.analysis_repo import AnalysisRepository
 from app.repositories.errors import DatabaseError
+from app.repositories.mappers import analysis_from_create
 from tests.integration.db.conftest import _analysis, _market_data
+
+OWNER = "test-user-id"
+USER_A = "user-a"
+USER_B = "user-b"
 
 
 class TestAnalysisSave:
@@ -43,7 +48,7 @@ class TestAnalysisSave:
     def test_money_values_round_trip(self, session):
         payload = _analysis(cost=Decimal("19.99"), target_margin=Decimal("12.5"), recommended_price=27.41)
         saved = AnalysisRepository(session).save_analysis(payload)
-        loaded = AnalysisRepository(session).get_by_id(saved.id)
+        loaded = AnalysisRepository(session).get_by_id(saved.id, OWNER)
         assert loaded is not None
         assert loaded.cost == pytest.approx(19.99)
         assert loaded.target_margin == pytest.approx(12.5)
@@ -71,14 +76,14 @@ class TestAnalysisTransaction:
 class TestAnalysisGet:
     def test_get_existing_includes_market_data(self, session):
         saved = AnalysisRepository(session).save_analysis(_analysis())
-        loaded = AnalysisRepository(session).get_by_id(saved.id)
+        loaded = AnalysisRepository(session).get_by_id(saved.id, OWNER)
         assert loaded is not None
         assert loaded.id == saved.id
         assert loaded.market_data.filtered_prices_count == 3
         assert loaded.market_data.tavily_query == "Widget price US USD"
 
     def test_missing_id_returns_none(self, session):
-        assert AnalysisRepository(session).get_by_id(uuid4()) is None
+        assert AnalysisRepository(session).get_by_id(uuid4(), OWNER) is None
 
 
 class TestAnalysisList:
@@ -90,7 +95,7 @@ class TestAnalysisList:
         sleep(0.02)
         third = repo.save_analysis(_analysis(product_name="Newest Widget"))
 
-        page = repo.list_analyses(limit=2, offset=0)
+        page = repo.list_analyses(OWNER, limit=2, offset=0)
         assert page.total == 3
         assert page.limit == 2
         assert page.offset == 0
@@ -98,7 +103,7 @@ class TestAnalysisList:
         assert page.items[0].id == third.id
         assert page.items[0].market_data.competitor_price_1 == pytest.approx(24.99)
 
-        page2 = repo.list_analyses(limit=2, offset=2)
+        page2 = repo.list_analyses(OWNER, limit=2, offset=2)
         assert page2.total == 3
         assert [item.product_name for item in page2.items] == ["Older Widget"]
         assert page2.items[0].id == first.id
@@ -117,10 +122,65 @@ class TestEnumRoundTrip:
                 market_data=_market_data(data_trust="low"),
             )
         )
-        loaded = AnalysisRepository(session).get_by_id(saved.id)
+        loaded = AnalysisRepository(session).get_by_id(saved.id, OWNER)
         assert loaded is not None
         assert loaded.category == Category.HEALTH_BEAUTY
         assert loaded.strategy == Strategy.PREMIUM
         assert loaded.recommendation_mode == RecommendationMode.MARKET_LED
         assert loaded.demand_signal == DemandLevel.VERY_HIGH
         assert loaded.market_data.data_trust == "low"
+
+
+class TestAnalysisOwnership:
+    def test_save_stores_user_id(self, session):
+        saved = AnalysisRepository(session).save_analysis(_analysis(user_id=USER_A))
+        row = session.scalar(select(Analysis).where(Analysis.id == saved.id))
+        assert row is not None
+        assert row.user_id == USER_A
+
+    def test_list_is_scoped_to_user(self, session):
+        repo = AnalysisRepository(session)
+        repo.save_analysis(_analysis(product_name="A One", user_id=USER_A))
+        sleep(0.02)
+        repo.save_analysis(_analysis(product_name="A Two", user_id=USER_A))
+        repo.save_analysis(_analysis(product_name="B One", user_id=USER_B))
+
+        listed_a = repo.list_analyses(USER_A)
+        listed_b = repo.list_analyses(USER_B)
+        assert listed_a.total == 2
+        assert [item.product_name for item in listed_a.items] == ["A Two", "A One"]
+        assert listed_b.total == 1
+        assert [item.product_name for item in listed_b.items] == ["B One"]
+
+    def test_list_excludes_null_legacy_rows_and_scopes_total(self, session):
+        repo = AnalysisRepository(session)
+        repo.save_analysis(_analysis(product_name="Owned", user_id=USER_A))
+        legacy = analysis_from_create(_analysis(product_name="Legacy"))
+        legacy.user_id = None
+        session.add(legacy)
+        session.commit()
+
+        listed_a = repo.list_analyses(USER_A)
+        listed_b = repo.list_analyses(USER_B)
+        assert listed_a.total == 1
+        assert [item.product_name for item in listed_a.items] == ["Owned"]
+        assert listed_b.total == 0
+        assert listed_b.items == []
+
+    def test_get_by_id_requires_matching_owner(self, session):
+        repo = AnalysisRepository(session)
+        saved = repo.save_analysis(_analysis(product_name="A Secret", user_id=USER_A))
+        loaded = repo.get_by_id(saved.id, USER_A)
+        assert loaded is not None
+        assert loaded.product_name == "A Secret"
+        assert repo.get_by_id(saved.id, USER_B) is None
+
+    def test_get_legacy_null_owner_returns_none(self, session):
+        repo = AnalysisRepository(session)
+        legacy = analysis_from_create(_analysis(product_name="Legacy"))
+        legacy.user_id = None
+        session.add(legacy)
+        session.commit()
+        session.refresh(legacy)
+        assert repo.get_by_id(legacy.id, USER_A) is None
+        assert repo.get_by_id(legacy.id, USER_B) is None

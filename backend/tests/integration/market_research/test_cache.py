@@ -67,6 +67,7 @@ def _settings(**overrides) -> Settings:
     defaults = {
         "market_cache_reliable_ttl_seconds": 86400,
         "market_cache_low_quality_ttl_seconds": 900,
+        "supabase_url": "https://example.supabase.co",
     }
     defaults.update(overrides)
     return Settings(**defaults)

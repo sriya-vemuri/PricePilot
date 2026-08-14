@@ -2,7 +2,8 @@
 
 Relationships:
     Analysis 1:1 MarketData via market_data.analysis_id UNIQUE + CASCADE.
-    MarketCache is independent of analyses (Tavily research reuse).
+    Analysis.user_id is the Supabase JWT subject. Legacy rows may be NULL.
+    MarketCache is independent of analyses (shared Tavily research reuse).
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ class Analysis(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=utc_now)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
 
     product_name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)

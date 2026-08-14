@@ -43,6 +43,7 @@ class MarketDataCreate(BaseModel):
 
 
 class AnalysisCreate(BaseModel):
+    user_id: str = Field(min_length=1, max_length=128)
     product_name: str
     category: Category
     cost: Decimal

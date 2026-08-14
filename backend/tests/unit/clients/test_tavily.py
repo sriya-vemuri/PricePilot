@@ -27,6 +27,7 @@ def make_settings(**overrides: Any) -> Settings:
         "tavily_api_key": API_KEY,
         "tavily_timeout_seconds": 5.0,
         "tavily_max_retries": 3,
+        "supabase_url": "https://example.supabase.co",
     }
     defaults.update(overrides)
     return Settings(**defaults)

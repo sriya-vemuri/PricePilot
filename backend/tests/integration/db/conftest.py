@@ -122,6 +122,7 @@ def _analysis(**overrides) -> AnalysisCreate:
         "baseline_status": BaselineStatus.PLAUSIBLE,
         "baseline_conflict": False,
         "baseline_conflict_reason": None,
+        "user_id": "test-user-id",
         "market_data": _market_data(),
     }
     payload.update(overrides)

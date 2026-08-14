@@ -32,6 +32,8 @@ const USER_MESSAGES = {
     'Some of the submitted details were invalid. Check the form and try again.',
   network_error:
     'Could not reach the PricePilot backend. Confirm it is running and try again.',
+  unauthorized:
+    'Your session expired or you are not signed in. Please sign in again.',
 };
 
 /**
@@ -49,6 +51,9 @@ export function messageForApiError(errorCode, fallbackMessage, status) {
   }
   if (status === 422) {
     return USER_MESSAGES.validation_error;
+  }
+  if (status === 401) {
+    return USER_MESSAGES.unauthorized;
   }
   if (!status) {
     return USER_MESSAGES.network_error;

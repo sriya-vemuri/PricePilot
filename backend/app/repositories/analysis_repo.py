@@ -29,12 +29,12 @@ class AnalysisRepository:
             self.session.rollback()
             raise
 
-    def get_by_id(self, analysis_id: UUID) -> AnalysisDetailResponse | None:
+    def get_by_id(self, analysis_id: UUID, user_id: str) -> AnalysisDetailResponse | None:
         try:
             stmt = (
                 select(Analysis)
                 .options(selectinload(Analysis.market_data))
-                .where(Analysis.id == analysis_id)
+                .where(Analysis.id == analysis_id, Analysis.user_id == user_id)
             )
             row = self.session.scalar(stmt)
             if row is None:
@@ -43,12 +43,14 @@ class AnalysisRepository:
         except SQLAlchemyError as exc:
             raise DatabaseError("Failed to load analysis") from exc
 
-    def list_analyses(self, *, limit: int = 50, offset: int = 0) -> AnalysisListResponse:
+    def list_analyses(self, user_id: str, *, limit: int = 50, offset: int = 0) -> AnalysisListResponse:
         try:
-            total = self.session.scalar(select(func.count()).select_from(Analysis)) or 0
+            owner = Analysis.user_id == user_id
+            total = self.session.scalar(select(func.count()).select_from(Analysis).where(owner)) or 0
             stmt = (
                 select(Analysis)
                 .options(selectinload(Analysis.market_data))
+                .where(owner)
                 .order_by(Analysis.created_at.desc())
                 .limit(limit)
                 .offset(offset)

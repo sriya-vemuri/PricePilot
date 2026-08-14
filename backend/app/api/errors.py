@@ -23,6 +23,12 @@ class AnalysisNotFoundError(Exception):
         super().__init__("Analysis not found")
 
 
+class UnauthorizedError(Exception):
+    def __init__(self, message: str = "Authentication required") -> None:
+        self.message = message
+        super().__init__(message)
+
+
 def _error_response(status_code: int, error: str, message: str, details: dict | None = None) -> JSONResponse:
     payload = ErrorResponse(error=error, message=message, details=details)
     return JSONResponse(status_code=status_code, content=payload.model_dump(exclude_none=True))
@@ -61,6 +67,14 @@ async def analysis_not_found_handler(request: Request, exc: AnalysisNotFoundErro
     )
 
 
+async def unauthorized_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
+    return _error_response(
+        401,
+        "unauthorized",
+        exc.message,
+    )
+
+
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     errors = [
         {
@@ -83,4 +97,5 @@ def register_exception_handlers(application: FastAPI) -> None:
     application.add_exception_handler(PricingCalculationError, pricing_calculation_handler)
     application.add_exception_handler(DatabaseError, database_error_handler)
     application.add_exception_handler(AnalysisNotFoundError, analysis_not_found_handler)
+    application.add_exception_handler(UnauthorizedError, unauthorized_handler)
     application.add_exception_handler(RequestValidationError, validation_error_handler)

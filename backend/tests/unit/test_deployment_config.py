@@ -36,7 +36,10 @@ class TestNormalizeDatabaseUrl:
         assert parsed.database == "db"
 
     def test_settings_normalizes_database_url(self):
-        settings = Settings(database_url="postgres://u:p@h/db")
+        settings = Settings(
+            database_url="postgres://u:p@h/db",
+            supabase_url="https://example.supabase.co",
+        )
         assert settings.database_url == "postgresql+psycopg://u:p@h/db"
 
 
@@ -62,7 +65,7 @@ class TestEngineKwargs:
 
 class TestCorsOrigins:
     def test_default_localhost_origins(self):
-        settings = Settings()
+        settings = Settings(supabase_url="https://example.supabase.co")
         assert settings.cors_origins == [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
@@ -70,7 +73,8 @@ class TestCorsOrigins:
 
     def test_comma_separated_production_origin(self):
         settings = Settings(
-            cors_origins="http://localhost:5173,https://pricepilot.vercel.app"
+            cors_origins="http://localhost:5173,https://pricepilot.vercel.app",
+            supabase_url="https://example.supabase.co",
         )
         assert settings.cors_origins == [
             "http://localhost:5173",
@@ -89,7 +93,8 @@ class TestCorsOrigins:
 
     def test_json_array_still_supported(self):
         settings = Settings(
-            cors_origins='["http://localhost:5173","https://pricepilot.vercel.app"]'
+            cors_origins='["http://localhost:5173","https://pricepilot.vercel.app"]',
+            supabase_url="https://example.supabase.co",
         )
         assert settings.cors_origins == [
             "http://localhost:5173",
@@ -97,6 +102,18 @@ class TestCorsOrigins:
         ]
 
     def test_no_wildcard_added(self):
-        settings = Settings(cors_origins="https://pricepilot.vercel.app")
+        settings = Settings(
+            cors_origins="https://pricepilot.vercel.app",
+            supabase_url="https://example.supabase.co",
+        )
         assert "*" not in settings.cors_origins
         assert settings.cors_origins == ["https://pricepilot.vercel.app"]
+
+    def test_supabase_url_is_normalized_and_jwks_derived(self):
+        settings = Settings(supabase_url="https://proj.supabase.co/")
+        assert settings.supabase_url == "https://proj.supabase.co"
+        assert settings.supabase_jwt_issuer == "https://proj.supabase.co/auth/v1"
+        assert (
+            settings.supabase_jwks_url
+            == "https://proj.supabase.co/auth/v1/.well-known/jwks.json"
+        )

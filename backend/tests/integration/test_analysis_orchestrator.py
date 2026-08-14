@@ -233,7 +233,7 @@ class TestSuccessfulAnalysis:
     async def test_reliable_analysis_saves_pricing_and_market_data(self):
         orchestrator, research, repo = _orchestrator()
         request = _request()
-        result = await orchestrator.create_analysis(request)
+        result = await orchestrator.create_analysis(request, user_id="test-user-id")
 
         assert isinstance(result.id, UUID)
         assert result.product_name == PRODUCT
@@ -250,6 +250,7 @@ class TestSuccessfulAnalysis:
         assert result.trace_demand_level == DemandLevel.HIGH
         assert result.trace_competitor_avg_used == result.competitor_avg_price
         assert len(repo.saved) == 1
+        assert repo.saved[0].user_id == "test-user-id"
         assert repo.saved[0].market_data.comparable_prices == COMPARABLE
         assert research.calls[0][0] == PRODUCT
 
@@ -258,14 +259,20 @@ class TestSuccessfulAnalysis:
 class TestBaselinePreview:
     async def test_market_research_receives_calc_baseline(self):
         orchestrator, research, _repo = _orchestrator()
-        await orchestrator.create_analysis(_request(cost=Decimal("100"), target_margin=Decimal("30")))
+        await orchestrator.create_analysis(
+            _request(cost=Decimal("100"), target_margin=Decimal("30")),
+            user_id="test-user-id",
+        )
         expected = calc_baseline(Decimal("100"), Decimal("30"))
         assert expected == pytest.approx(142.86)
         assert research.calls[0][3] == pytest.approx(expected)
 
     async def test_zero_margin_baseline_equals_cost(self):
         orchestrator, research, _repo = _orchestrator()
-        await orchestrator.create_analysis(_request(cost=Decimal("80"), target_margin=Decimal("0")))
+        await orchestrator.create_analysis(
+            _request(cost=Decimal("80"), target_margin=Decimal("0")),
+            user_id="test-user-id",
+        )
         assert research.calls[0][3] == pytest.approx(80.0)
 
 
@@ -290,7 +297,7 @@ class TestPricingInput:
             raw_prices_found=5,
         )
         orchestrator, _, _ = _orchestrator(FakeMarketResearch(market))
-        await orchestrator.create_analysis(_request())
+        await orchestrator.create_analysis(_request(), user_id="test-user-id")
 
         assert len(captured) == 1
         pricing_input = captured[0]
@@ -310,7 +317,7 @@ class TestPricingInput:
 class TestDegradedMarket:
     async def test_no_market_fallback_still_saves(self):
         orchestrator, _, repo = _orchestrator(FakeMarketResearch(_empty_market()))
-        result = await orchestrator.create_analysis(_request())
+        result = await orchestrator.create_analysis(_request(), user_id="test-user-id")
 
         assert result.trace_used_fallback is True
         assert result.market_data.comparable_prices == []
@@ -321,7 +328,7 @@ class TestDegradedMarket:
     async def test_tavily_outage_still_creates_analysis(self):
         market = _empty_market(warnings=[WARNING_TAVILY_UNAVAILABLE, WARNING_INSUFFICIENT_MARKET_DATA])
         orchestrator, _, repo = _orchestrator(FakeMarketResearch(market))
-        result = await orchestrator.create_analysis(_request())
+        result = await orchestrator.create_analysis(_request(), user_id="test-user-id")
 
         assert WARNING_TAVILY_UNAVAILABLE in result.market_warnings
         assert result.market_data.comparable_prices == []
@@ -335,7 +342,7 @@ class TestMissingTavilyConfig:
         research = FakeMarketResearch(error=TavilyNotConfiguredError("missing"))
         orchestrator, _, repo = _orchestrator(research)
         with pytest.raises(TavilyNotConfiguredError):
-            await orchestrator.create_analysis(_request())
+            await orchestrator.create_analysis(_request(), user_id="test-user-id")
         assert repo.saved == []
 
 
@@ -343,7 +350,7 @@ class TestMissingTavilyConfig:
 class TestCacheHit:
     async def test_create_response_preserves_runtime_cache_hit(self):
         orchestrator, _, repo = _orchestrator(FakeMarketResearch(_market(cache_hit=True)))
-        result = await orchestrator.create_analysis(_request())
+        result = await orchestrator.create_analysis(_request(), user_id="test-user-id")
         assert result.market_data.cache_hit is True
         assert not hasattr(repo.saved[0].market_data, "cache_hit") or "cache_hit" not in repo.saved[0].market_data.model_fields
         assert "cache_hit" not in repo.saved[0].market_data.model_dump()
@@ -352,7 +359,7 @@ class TestCacheHit:
 
     async def test_live_research_returns_cache_hit_false(self):
         orchestrator, _, _ = _orchestrator(FakeMarketResearch(_market(cache_hit=False)))
-        result = await orchestrator.create_analysis(_request())
+        result = await orchestrator.create_analysis(_request(), user_id="test-user-id")
         assert result.market_data.cache_hit is False
 
 
@@ -374,7 +381,7 @@ class TestStage3:
             warnings=[WARNING_STAGE3_LOW_TRUST],
         )
         orchestrator, _, _ = _orchestrator(FakeMarketResearch(market))
-        result = await orchestrator.create_analysis(_request())
+        result = await orchestrator.create_analysis(_request(), user_id="test-user-id")
 
         assert captured[0].data_trust == "low"
         assert WARNING_STAGE3_LOW_TRUST in result.market_warnings
@@ -395,7 +402,7 @@ class TestTraceMapping:
             outliers_removed=1,
         )
         orchestrator, _, repo = _orchestrator(FakeMarketResearch(market))
-        result = await orchestrator.create_analysis(_request())
+        result = await orchestrator.create_analysis(_request(), user_id="test-user-id")
         saved = repo.saved[0]
 
         assert result.trace_tavily_query == "custom query"
@@ -418,11 +425,11 @@ class TestPersistence:
         market = _market(cache_hit=True, warnings=[WARNING_STAGE3_LOW_TRUST])
         orchestrator = AnalysisOrchestrator(FakeMarketResearch(market), repo)
 
-        created = await orchestrator.create_analysis(_request())
+        created = await orchestrator.create_analysis(_request(), user_id="test-user-id")
         assert created.market_data.cache_hit is True
         assert WARNING_STAGE3_LOW_TRUST in created.market_warnings
 
-        loaded = repo.get_by_id(created.id)
+        loaded = repo.get_by_id(created.id, "test-user-id")
         assert loaded is not None
         assert loaded.product_name == PRODUCT
         assert loaded.cost == pytest.approx(100)
@@ -441,7 +448,7 @@ class TestFailures:
         repo.error = DatabaseError("write failed")
         orchestrator, _, _ = _orchestrator(repo=repo)
         with pytest.raises(DatabaseError, match="write failed"):
-            await orchestrator.create_analysis(_request())
+            await orchestrator.create_analysis(_request(), user_id="test-user-id")
 
     async def test_pricing_failure_does_not_save(self, monkeypatch):
         def boom(_input: PricingInput):
@@ -450,7 +457,7 @@ class TestFailures:
         monkeypatch.setattr("app.services.analysis_orchestrator.generate_pricing", boom)
         orchestrator, _, repo = _orchestrator()
         with pytest.raises(PricingCalculationError) as exc_info:
-            await orchestrator.create_analysis(_request())
+            await orchestrator.create_analysis(_request(), user_id="test-user-id")
         assert isinstance(exc_info.value.__cause__, RuntimeError)
         assert repo.saved == []
 

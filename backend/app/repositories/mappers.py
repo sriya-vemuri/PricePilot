@@ -28,6 +28,7 @@ def _enum_value(value: object) -> str:
 def analysis_from_create(payload: AnalysisCreate) -> Analysis:
     market = payload.market_data
     analysis = Analysis(
+        user_id=payload.user_id,
         product_name=payload.product_name,
         category=_enum_value(payload.category),
         cost=payload.cost,

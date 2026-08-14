@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     market_cache_reliable_ttl_seconds: int = 24 * 60 * 60
     market_cache_low_quality_ttl_seconds: int = 15 * 60
     cors_origins: list[str] = Field(default_factory=lambda: list(_DEFAULT_CORS_ORIGINS))
+    supabase_url: str = Field(min_length=1)
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -67,6 +68,22 @@ class Settings(BaseSettings):
     @classmethod
     def _parse_cors_origins(cls, value: Any) -> list[str]:
         return parse_cors_origins(value)
+
+    @field_validator("supabase_url", mode="before")
+    @classmethod
+    def _normalize_supabase_url(cls, value: Any) -> Any:
+        if value is None:
+            return value
+        text = str(value).strip().rstrip("/")
+        return text
+
+    @property
+    def supabase_jwt_issuer(self) -> str:
+        return f"{self.supabase_url}/auth/v1"
+
+    @property
+    def supabase_jwks_url(self) -> str:
+        return f"{self.supabase_url}/auth/v1/.well-known/jwks.json"
 
 
 @lru_cache

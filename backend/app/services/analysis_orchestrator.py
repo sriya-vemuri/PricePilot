@@ -46,7 +46,7 @@ class AnalysisOrchestrator:
         self._market_research = market_research
         self._analysis_repo = analysis_repo
 
-    async def create_analysis(self, request: CreateAnalysisRequest) -> AnalysisDetailResponse:
+    async def create_analysis(self, request: CreateAnalysisRequest, user_id: str) -> AnalysisDetailResponse:
         pricing_mode = get_pricing_mode(request.category)
         baseline_price = calc_baseline(request.cost, request.target_margin)
 
@@ -75,7 +75,7 @@ class AnalysisOrchestrator:
             raise PricingCalculationError("Unexpected pricing-engine failure") from exc
 
         saved = self._analysis_repo.save_analysis(
-            _to_analysis_create(request, pricing_mode, market, pricing)
+            _to_analysis_create(request, pricing_mode, market, pricing, user_id=user_id)
         )
         # Runtime cache_hit is not stored. Override only the create response.
         return saved.model_copy(
@@ -90,8 +90,11 @@ def _to_analysis_create(
     pricing_mode: PricingMode,
     market: MarketResearchResult,
     pricing: PricingResult,
+    *,
+    user_id: str,
 ) -> AnalysisCreate:
     return AnalysisCreate(
+        user_id=user_id,
         product_name=request.product_name,
         category=request.category,
         cost=request.cost,

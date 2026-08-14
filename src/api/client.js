@@ -7,6 +7,7 @@
  * - development default: http://127.0.0.1:8000
  */
 
+import { supabase } from '@/lib/supabase';
 import { ApiError, messageForApiError } from './errors';
 
 
@@ -50,12 +51,28 @@ function buildRequestUrl(path, params) {
 }
 
 /**
+ * Read the current Supabase access token. Session persistence stays in the
+ * shared Supabase client — tokens are not stored separately.
+ * @returns {Promise<string | null>}
+ */
+async function getAccessToken() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error('[API] Failed to read auth session:', error.message);
+    return null;
+  }
+  const token = data.session?.access_token;
+  return typeof token === 'string' && token.trim() ? token : null;
+}
+
+/**
  * @param {string} path
  * @param {RequestInit & { params?: Record<string, string | number | undefined> }} [options]
  */
 export async function apiRequest(path, options = {}) {
   const { params, headers, ...init } = options;
   const url = buildRequestUrl(path, params);
+  const accessToken = await getAccessToken();
 
   let response;
   try {
@@ -64,6 +81,7 @@ export async function apiRequest(path, options = {}) {
       headers: {
         Accept: 'application/json',
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...headers,
       },
     });
