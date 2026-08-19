@@ -20,10 +20,15 @@ export default function Sidebar() {
       collapsed ? "w-[68px]" : "w-[230px]"
     )}>
       {/* Logo */}
-      <div className={cn(
-        "flex items-center gap-3 border-b border-[hsl(35,18%,84%)] transition-all duration-300",
-        collapsed ? "px-4 py-5 justify-center" : "px-5 py-5"
-      )}>
+      <Link
+        to="/"
+        aria-label="Back to dashboard"
+        className={cn(
+          "flex items-center gap-3 border-b border-[hsl(35,18%,84%)] transition-all duration-300",
+          collapsed ? "px-4 py-5 justify-center" : "px-5 py-5",
+          "hover:bg-[hsl(38,35%,88%)]"
+        )}
+      >
         <div className="h-8 w-8 rounded-xl bg-[hsl(25,40%,22%)] flex items-center justify-center flex-shrink-0 shadow-warm-sm">
           <span className="text-[hsl(38,33%,95%)] font-serif text-sm font-normal italic">P</span>
         </div>
@@ -33,7 +38,7 @@ export default function Sidebar() {
             <p className="text-[9px] text-[hsl(25,15%,52%)] font-sans uppercase tracking-[0.15em] mt-0.5">Intelligence</p>
           </div>
         )}
-      </div>
+      </Link>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
