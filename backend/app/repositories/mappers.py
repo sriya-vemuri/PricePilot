@@ -123,6 +123,7 @@ def to_market_data_summary(row: MarketData) -> MarketDataSummary:
         competitor_price_1=money_to_float(row.competitor_price_1),
         competitor_price_2=money_to_float(row.competitor_price_2),
         competitor_price_3=money_to_float(row.competitor_price_3),
+        has_reliable_data=bool(row.has_reliable_data),
     )
 
 
@@ -176,6 +177,7 @@ def to_analysis_summary(row: Analysis) -> AnalysisSummaryResponse:
         product_name=row.product_name,
         category=Category(row.category),
         strategy=Strategy(row.strategy),
+        baseline_price=float(row.baseline_price),
         recommended_price=float(row.recommended_price),
         competitor_avg_price=money_to_float(row.competitor_avg_price),
         confidence_score=row.confidence_score,

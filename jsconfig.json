@@ -22,6 +22,8 @@
     "src/pages/**/*.jsx",
     "src/auth/**/*.{js,jsx}",
     "src/lib/supabase.js",
+    "src/lib/dashboard-metrics.js",
+    "src/components/dashboard/**/*.jsx",
     "src/vite-env.d.ts",
     "src/Layout.jsx"
   ],

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Filter, TrendingUp, TrendingDown, Minus, Activity, BarChart2, GitBranch, AlertCircle, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import React from 'react';
+import { Search, Filter, TrendingUp, TrendingDown, Minus, Activity, BarChart2, GitBranch, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 const demandLabels = { very_low: 'Very Low', low: 'Low', moderate: 'Moderate', high: 'High', very_high: 'Very High' };
 const demandColors = {
@@ -15,15 +15,6 @@ const trendCfg = {
   stable:   { icon: Minus,        color: 'text-[hsl(38,45%,42%)]',  label: 'Stable',   note: 'Stable market — no trend adjustment.' },
   declining:{ icon: TrendingDown, color: 'text-[hsl(4,55%,48%)]',   label: 'Declining',note: 'Declining market applied conservative pressure.' },
 };
-
-// Truncate summary at sentence boundary for preview
-function previewSummary(text, maxChars = 300) {
-  if (!text || text.length <= maxChars) return { preview: text, hasMore: false };
-  const sub = text.slice(0, maxChars);
-  const lastEnd = Math.max(sub.lastIndexOf('. '), sub.lastIndexOf('! '), sub.lastIndexOf('? '));
-  const cut = lastEnd > maxChars * 0.4 ? sub.slice(0, lastEnd + 1).trim() : sub.trim() + '…';
-  return { preview: cut, hasMore: true };
-}
 
 /**
  * @param {{ label: string; value: string; note?: string; highlight?: boolean }} props
@@ -65,18 +56,15 @@ function TraceStep({ stepNum, icon: Icon, iconColor, label, value, sub, pill, pi
   );
 }
 
-export default function ReasoningTrace({ analysis, marketData }) {
-  const [summaryExpanded, setSummaryExpanded] = useState(false);
-
+export default function ReasoningTrace({ analysis }) {
   const {
     trace_tavily_query, trace_prices_found, trace_filtered_low, trace_filtered_high,
     trace_filtered_count, trace_used_fallback, trace_market_trend, trace_demand_level,
     trace_competitor_avg_used, baseline_price, recommended_price, strategy,
-    confidence_score, confidence_explanation, reasoning_summary,
+    confidence_score, confidence_explanation,
     number_of_valid_prices, price_variance, pricing_basis,
   } = analysis;
 
-  const cost = analysis.baseline_price; // used for display only
   const hasTrace = trace_tavily_query || trace_demand_level || trace_market_trend || baseline_price;
   if (!hasTrace) return null;
 
@@ -84,9 +72,6 @@ export default function ReasoningTrace({ analysis, marketData }) {
   const TrendIcon = trend.icon;
   const demand = trace_demand_level || analysis.demand_signal;
   const demandCls = demandColors[demand] || demandColors.moderate;
-
-  const summaryText = marketData?.summary || reasoning_summary || '';
-  const { preview, hasMore } = previewSummary(summaryText, 280);
 
   const confidenceLabel = confidence_score >= 65 ? 'High' : confidence_score >= 42 ? 'Medium' : 'Low';
   const confidenceColor = confidence_score >= 65
@@ -180,27 +165,6 @@ export default function ReasoningTrace({ analysis, marketData }) {
       </div>
 
       <div className="p-8 space-y-8">
-
-        {/* ── Market Summary (expandable) ── */}
-        {summaryText && (
-          <div>
-            <p className="text-[11px] font-medium text-[hsl(25,15%,52%)] uppercase tracking-[0.1em] mb-2.5">Market Summary</p>
-            <div className="rounded-xl bg-[hsl(38,30%,96%)] border border-[hsl(35,20%,86%)] p-4">
-              <p className="text-[13px] text-[hsl(25,25%,22%)] leading-relaxed">
-                {summaryExpanded ? summaryText : preview}
-              </p>
-              {hasMore && (
-                <button
-                  onClick={() => setSummaryExpanded(v => !v)}
-                  className="mt-2 flex items-center gap-1 text-[11px] font-medium text-[hsl(25,40%,35%)] hover:text-[hsl(25,40%,22%)] transition-colors"
-                >
-                  {summaryExpanded ? <><ChevronUp className="h-3 w-3" /> Show less</> : <><ChevronDown className="h-3 w-3" /> Show more</>}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* ── Tavily query ── */}
         {trace_tavily_query && (
           <div className="rounded-xl border border-[hsl(35,20%,86%)] bg-[hsl(38,25%,97%)] p-4 flex items-start gap-3">

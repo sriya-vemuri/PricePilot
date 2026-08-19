@@ -136,6 +136,8 @@ class TestListAndPagination:
         assert body["items"][0]["id"] == second.json()["id"]
         assert body["items"][1]["id"] == first.json()["id"]
         assert "competitor_price_1" in body["items"][0]["market_data"]
+        assert "has_reliable_data" in body["items"][0]["market_data"]
+        assert body["items"][0]["baseline_price"] == second.json()["baseline_price"]
 
     def test_pagination_limit_and_offset(self, tmp_path):
         with api_client(unique_tmp(tmp_path)) as client:
@@ -188,6 +190,28 @@ class TestGetAnalysis:
             response = client.get("/api/analyses/not-a-uuid")
         assert response.status_code == 422
         assert response.json()["error"] == "validation_error"
+
+
+class TestDeleteAnalysis:
+    def test_delete_own_analysis_returns_204(self, tmp_path):
+        with api_client(unique_tmp(tmp_path)) as client:
+            created = client.post("/api/analyses", json=CREATE_PAYLOAD)
+            analysis_id = created.json()["id"]
+            deleted = client.delete(f"/api/analyses/{analysis_id}")
+            fetched = client.get(f"/api/analyses/{analysis_id}")
+            listed = client.get("/api/analyses")
+        assert deleted.status_code == 204
+        assert fetched.status_code == 404
+        assert listed.json()["total"] == 0
+
+    def test_delete_missing_returns_404(self, tmp_path):
+        missing = uuid4()
+        with api_client(unique_tmp(tmp_path)) as client:
+            response = client.delete(f"/api/analyses/{missing}")
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"] == "analysis_not_found"
+        assert body["details"]["analysis_id"] == str(missing)
 
 
 class TestPersistenceAndCacheHit:

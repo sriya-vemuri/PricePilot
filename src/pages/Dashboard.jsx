@@ -1,9 +1,23 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { listAnalyses } from '@/api/analyses';
 import { useQuery } from '@tanstack/react-query';
-import { DollarSign, BarChart2, TrendingUp, Zap, ArrowRight, Plus, Radio, TrendingDown, Minus, Activity, Brain } from 'lucide-react';
+import { DollarSign, BarChart2, TrendingUp, Zap, ArrowRight, Plus, Radio, TrendingDown, Minus, Activity, Brain, SlidersHorizontal } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import PriceDistributionChart from '@/components/dashboard/PriceDistributionChart';
+import RecentAnalysesList from '@/components/dashboard/RecentAnalysesList';
+import {
+  ALL_CATEGORIES,
+  analysesCountLabel,
+  categoryLabel,
+  dashboardSummary,
+  distinctRecentProducts,
+  dominantDemandLevel,
+  dominantMarketTrend,
+  filterAnalysesByCategory,
+  marketSummaryTitle,
+  uniqueCategories,
+} from '@/lib/dashboard-metrics';
 
 const demandOrder = ['very_low', 'low', 'moderate', 'high', 'very_high'];
 const demandLabel = { very_low: 'Very Low', low: 'Low', moderate: 'Moderate', high: 'High', very_high: 'Very High' };
@@ -25,6 +39,8 @@ const demandColors = {
   very_low:  'text-[hsl(4,55%,48%)] bg-[hsl(4,55%,95%)]',
 };
 
+const fieldClass = "px-4 py-2.5 rounded-xl border border-[hsl(35,20%,84%)] bg-card text-[13px] text-[hsl(25,25%,18%)] focus:outline-none focus:border-[hsl(25,40%,40%)] focus:ring-2 focus:ring-[hsl(25,40%,40%)]/10 transition-all duration-200";
+
 /**
  * @param {{ active?: boolean; payload?: Array<{ name?: string; value?: number; color?: string }>; label?: string }} props
  */
@@ -33,9 +49,9 @@ const ChartTooltip = ({ active, payload, label }) => {
   return (
     <div className="bg-[hsl(36,40%,97%)] border border-[hsl(35,18%,84%)] rounded-xl px-3 py-2 shadow-warm-md text-[12px]">
       <p className="text-[hsl(25,15%,52%)] mb-0.5">{label}</p>
-      {payload.map((p, i) => (
-        <p key={i} className="font-semibold" style={{ color: p.color }}>
-          {p.name === 'count' ? p.value : `$${Number(p.value).toFixed(2)}`}
+      {payload.map((entry, index) => (
+        <p key={index} className="font-semibold" style={{ color: entry.color }}>
+          {entry.name === 'count' ? entry.value : `$${Number(entry.value).toFixed(2)}`}
         </p>
       ))}
     </div>
@@ -58,27 +74,26 @@ function KpiCard({ title, value, sub, icon: Icon }) {
   );
 }
 
-// Derive an AI-style action recommendation from an analysis record
-function buildRecommendation(a) {
-  if (!a.recommended_price || !a.competitor_avg_price) return null;
-  const diff = ((a.recommended_price - a.competitor_avg_price) / a.competitor_avg_price) * 100;
-  const demand = a.demand_signal;
+function buildRecommendation(analysis) {
+  if (!analysis.recommended_price || !analysis.competitor_avg_price) return null;
+  const diff = ((analysis.recommended_price - analysis.competitor_avg_price) / analysis.competitor_avg_price) * 100;
+  const demand = analysis.demand_signal;
   const highDemand = demand === 'high' || demand === 'very_high';
   const lowDemand  = demand === 'low'  || demand === 'very_low';
 
   if (diff > 5 && highDemand) {
-    return { action: 'hold', text: `Hold at $${a.recommended_price.toFixed(2)} — demand is ${demandLabel[demand]?.toLowerCase()} and your price is above market, justified.`, type: 'above' };
+    return { action: 'hold', text: `Hold at $${analysis.recommended_price.toFixed(2)} — demand is ${demandLabel[demand]?.toLowerCase()} and your price is above market, justified.`, type: 'above' };
   }
   if (diff < -5 && lowDemand) {
-    return { action: 'hold', text: `Hold at $${a.recommended_price.toFixed(2)} — demand is ${demandLabel[demand]?.toLowerCase()}, pricing below market is the right call.`, type: 'below' };
+    return { action: 'hold', text: `Hold at $${analysis.recommended_price.toFixed(2)} — demand is ${demandLabel[demand]?.toLowerCase()}, pricing below market is the right call.`, type: 'below' };
   }
   if (diff < -5) {
-    return { action: 'increase', text: `Increase price by ~${Math.abs(diff).toFixed(0)}% — you're below competitor average ($${a.competitor_avg_price.toFixed(2)}) with ${demandLabel[demand]?.toLowerCase()} demand.`, type: 'below' };
+    return { action: 'increase', text: `Increase price by ~${Math.abs(diff).toFixed(0)}% — you're below competitor average ($${analysis.competitor_avg_price.toFixed(2)}) with ${demandLabel[demand]?.toLowerCase()} demand.`, type: 'below' };
   }
   if (diff > 10 && !highDemand) {
     return { action: 'decrease', text: `Lower price by ~${(diff / 2).toFixed(0)}% — currently above competitor average and demand is ${demandLabel[demand]?.toLowerCase()}.`, type: 'above' };
   }
-  return { action: 'hold', text: `Aligned with market at $${a.recommended_price.toFixed(2)} — competitor avg is $${a.competitor_avg_price.toFixed(2)}.`, type: 'aligned' };
+  return { action: 'hold', text: `Aligned with market at $${analysis.recommended_price.toFixed(2)} — competitor avg is $${analysis.competitor_avg_price.toFixed(2)}.`, type: 'aligned' };
 }
 
 function marketPositionLabel(diff) {
@@ -88,20 +103,67 @@ function marketPositionLabel(diff) {
 }
 
 export default function Dashboard() {
-  // Market intel is nested on each analysis summary (market_data).
-  // There is no separate market-data list endpoint — derive banner stats from analyses.
+  const [category, setCategory] = useState(ALL_CATEGORIES);
   const { data: listResponse, isLoading, isError, error } = useQuery({
-    queryKey: ['analyses', { limit: 50 }],
-    queryFn: () => listAnalyses({ limit: 50, offset: 0 }),
+    queryKey: ['analyses', { limit: 100 }],
+    queryFn: () => listAnalyses({ limit: 100, offset: 0 }),
   });
 
-  const analyses = listResponse?.items ?? [];
+  const analyses = /** @type {import('@/lib/dashboard-metrics').AnalysisSummary[]} */ (listResponse?.items ?? []);
+  const categories = useMemo(() => uniqueCategories(analyses), [analyses]);
+
+  useEffect(() => {
+    if (category !== ALL_CATEGORIES && !categories.includes(category)) {
+      setCategory(ALL_CATEGORIES);
+    }
+  }, [categories, category]);
+
+  const filteredAnalyses = useMemo(
+    () => filterAnalysesByCategory(analyses, category),
+    [analyses, category]
+  );
+
+  const summary = useMemo(() => dashboardSummary(filteredAnalyses), [filteredAnalyses]);
+  const demandAgg = useMemo(() => dominantDemandLevel(filteredAnalyses), [filteredAnalyses]);
+  const trendAgg = useMemo(() => dominantMarketTrend(filteredAnalyses), [filteredAnalyses]);
+  const recentProducts = useMemo(() => distinctRecentProducts(filteredAnalyses, 6), [filteredAnalyses]);
+
+  const demandChart = useMemo(() => {
+    const demandMap = {};
+    filteredAnalyses.forEach((analysis) => {
+      demandMap[analysis.demand_signal] = (demandMap[analysis.demand_signal] || 0) + 1;
+    });
+    return demandOrder.filter((key) => demandMap[key]).map((key) => ({ label: demandLabel[key], count: demandMap[key] }));
+  }, [filteredAnalyses]);
+
+  const stratChart = useMemo(() => {
+    const stratMap = {};
+    filteredAnalyses.forEach((analysis) => {
+      stratMap[analysis.strategy] = (stratMap[analysis.strategy] || 0) + 1;
+    });
+    return Object.entries(stratMap).map(([key, value]) => ({
+      name: key,
+      value,
+      fill: strategyColors[key] || 'hsl(38,50%,52%)',
+    }));
+  }, [filteredAnalyses]);
+
+  const aiRecs = useMemo(() => (
+    filteredAnalyses.slice(0, 5).map((analysis) => {
+      const rec = buildRecommendation(analysis);
+      if (!rec) return null;
+      const diff = analysis.competitor_avg_price
+        ? ((analysis.recommended_price - analysis.competitor_avg_price) / analysis.competitor_avg_price) * 100
+        : 0;
+      return { ...rec, id: analysis.id, name: analysis.product_name, price: analysis.recommended_price, diff, confidence: analysis.confidence_score };
+    }).filter(Boolean)
+  ), [filteredAnalyses]);
 
   if (isLoading) return (
     <div className="max-w-6xl animate-pulse space-y-6">
       <div className="h-8 w-48 bg-[hsl(38,30%,88%)] rounded-xl" />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1,2,3,4].map(i => <div key={i} className="h-28 bg-[hsl(38,30%,90%)] rounded-2xl" />)}
+        {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 bg-[hsl(38,30%,90%)] rounded-2xl" />)}
       </div>
     </div>
   );
@@ -112,86 +174,48 @@ export default function Dashboard() {
         <div className="bg-card rounded-2xl border border-[hsl(4,50%,82%)] shadow-warm p-10 text-center">
           <p className="font-serif text-2xl text-[hsl(25,25%,38%)] mb-2">Could not load dashboard</p>
           <p className="text-[13px] text-[hsl(25,15%,55%)]">
-            {error?.message || 'Unable to reach the PricePilot backend.'}
+            {error instanceof Error ? error.message : 'Unable to reach the PricePilot backend.'}
           </p>
         </div>
       </div>
     );
   }
 
-  // KPIs
-  const avgRecommended = analyses.length ? analyses.reduce((s, a) => s + (a.recommended_price || 0), 0) / analyses.length : null;
-  const withComp = analyses.filter(a => a.competitor_avg_price);
-  const avgCompetitor = withComp.length ? withComp.reduce((s, a) => s + a.competitor_avg_price, 0) / withComp.length : null;
-  const avgConfidence = analyses.length ? Math.round(analyses.reduce((s, a) => s + (a.confidence_score || 0), 0) / analyses.length) : null;
-  const topDemand = analyses.length ? (() => {
-    const counts = {};
-    analyses.forEach(a => { counts[a.demand_signal] = (counts[a.demand_signal] || 0) + 1; });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
-  })() : null;
-
-  // Nested market_data on summary items replaces the old separate ExternalMarketData list.
-  const marketDataList = analyses.map((a) => a.market_data).filter(Boolean);
-  const recentMarketItems = marketDataList.slice(0, 4);
-
-  // Aggregated market trend across recent data
-  const trendCounts = {};
-  marketDataList.forEach(m => { trendCounts[m.market_trend] = (trendCounts[m.market_trend] || 0) + 1; });
-  const dominantTrend = Object.entries(trendCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'stable';
-  const trendCfg = trendConfig[dominantTrend] || trendConfig.stable;
+  const trendCfg = trendConfig[trendAgg.value] || trendConfig.stable;
   const TrendIcon = trendCfg.icon;
-
-  // Competitor price range across nested market summaries
-  const allCompPrices = marketDataList.flatMap(m => [m.competitor_price_1, m.competitor_price_2, m.competitor_price_3].filter(Boolean));
-  const compMin = allCompPrices.length ? Math.min(...allCompPrices) : null;
-  const compMax = allCompPrices.length ? Math.max(...allCompPrices) : null;
-
-  // Chart data
-  const categoryMap = {};
-  analyses.forEach(a => {
-    const cat = (a.category || 'other').replace(/_/g, ' ');
-    if (!categoryMap[cat]) categoryMap[cat] = { category: cat, recommended: [], competitor: [] };
-    if (a.recommended_price) categoryMap[cat].recommended.push(a.recommended_price);
-    if (a.competitor_avg_price) categoryMap[cat].competitor.push(a.competitor_avg_price);
-  });
-  const priceChart = Object.values(categoryMap).map(d => ({
-    category: d.category,
-    recommended: d.recommended.length ? Math.round(d.recommended.reduce((s, v) => s + v, 0) / d.recommended.length) : 0,
-    competitor: d.competitor.length ? Math.round(d.competitor.reduce((s, v) => s + v, 0) / d.competitor.length) : 0,
-  }));
-
-  const demandMap = {};
-  analyses.forEach(a => { demandMap[a.demand_signal] = (demandMap[a.demand_signal] || 0) + 1; });
-  const demandChart = demandOrder.filter(k => demandMap[k]).map(k => ({ label: demandLabel[k], count: demandMap[k] }));
-
-  const stratMap = {};
-  analyses.forEach(a => { stratMap[a.strategy] = (stratMap[a.strategy] || 0) + 1; });
-  const stratChart = Object.entries(stratMap).map(([k, v]) => ({ name: k, value: v, fill: strategyColors[k] || 'hsl(38,50%,52%)' }));
-
-  // AI recommendations
-  const aiRecs = analyses.slice(0, 5).map(a => {
-    const rec = buildRecommendation(a);
-    if (!rec) return null;
-    const diff = a.competitor_avg_price ? ((a.recommended_price - a.competitor_avg_price) / a.competitor_avg_price) * 100 : 0;
-    return { ...rec, id: a.id, name: a.product_name, price: a.recommended_price, diff, confidence: a.confidence_score };
-  }).filter(Boolean);
-
   const empty = analyses.length === 0;
+  const filteredEmpty = !empty && filteredAnalyses.length === 0;
 
   return (
     <div className="max-w-6xl space-y-8 animate-fade-up">
-      {/* Header */}
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-medium text-[hsl(25,15%,52%)] uppercase tracking-[0.14em] mb-1">Overview</p>
           <h1 className="font-serif text-[hsl(25,40%,14%)] text-3xl">Pricing Intelligence</h1>
-          <p className="text-[13px] text-[hsl(25,15%,52%)] mt-1">AI-powered pricing decisions using real-time market intelligence</p>
+          <p className="text-[13px] text-[hsl(25,15%,52%)] mt-1">Product-level pricing history from your analyses</p>
         </div>
-        <Link to="/new-analysis">
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[hsl(25,40%,22%)] text-[hsl(38,33%,95%)] text-[13px] font-medium hover:bg-[hsl(25,40%,17%)] transition-colors shadow-warm-sm">
-            <Plus className="h-3.5 w-3.5" /> New Analysis
-          </button>
-        </Link>
+        <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative">
+            <SlidersHorizontal className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[hsl(25,15%,55%)]" />
+            <select
+              className={`${fieldClass} pl-9 pr-8 appearance-none cursor-pointer w-full sm:min-w-[200px]`}
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              aria-label="Filter by category"
+              disabled={empty}
+            >
+              <option value={ALL_CATEGORIES}>All Categories</option>
+              {categories.map((value) => (
+                <option key={value} value={value}>{categoryLabel(value)}</option>
+              ))}
+            </select>
+          </div>
+          <Link to="/new-analysis">
+            <button className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[hsl(25,40%,22%)] text-[hsl(38,33%,95%)] text-[13px] font-medium hover:bg-[hsl(25,40%,17%)] transition-colors shadow-warm-sm">
+              <Plus className="h-3.5 w-3.5" /> New Analysis
+            </button>
+          </Link>
+        </div>
       </div>
 
       {empty ? (
@@ -206,108 +230,115 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          {/* ── MARKET INTELLIGENCE BANNER ── */}
           <div className="rounded-2xl border border-[hsl(35,22%,82%)] bg-gradient-to-br from-[hsl(35,30%,93%)] to-[hsl(38,40%,96%)] shadow-warm overflow-hidden">
-            <div className="px-6 py-4 border-b border-[hsl(35,20%,86%)] flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-[hsl(140,40%,48%)] animate-pulse" />
-                  <span className="h-2 w-2 rounded-full bg-[hsl(140,40%,48%)] opacity-50" />
-                </div>
-                <p className="text-[11px] font-semibold text-[hsl(25,35%,25%)] uppercase tracking-[0.14em]">Market Intelligence</p>
+            <div className="px-6 py-4 border-b border-[hsl(35,20%,86%)] flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-[hsl(25,35%,25%)] uppercase tracking-[0.14em] mb-1">Aggregate view</p>
+                <h2 className="font-serif text-[hsl(25,40%,16%)] text-xl leading-tight">
+                  {marketSummaryTitle(category)}
+                </h2>
               </div>
-              <span className="text-[10px] text-[hsl(25,15%,55%)] flex items-center gap-1">
-                <Radio className="h-3 w-3" /> Real-time market data
+              <span className="text-[10px] text-[hsl(25,15%,55%)] flex items-center gap-1 flex-shrink-0">
+                <Radio className="h-3 w-3" /> {analysesCountLabel(filteredAnalyses.length)}
               </span>
             </div>
 
-            <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Competitor price range */}
-              <div className="bg-card/70 rounded-xl border border-[hsl(35,20%,88%)] p-4">
-                <p className="text-[10px] font-medium text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2">Competitor Price Range</p>
-                {compMin !== null ? (
-                  <>
-                    <p className="font-serif text-[hsl(25,40%,14%)] text-xl leading-none">
-                      ${compMin.toFixed(2)} — ${compMax.toFixed(2)}
-                    </p>
-                    <p className="text-[11px] text-[hsl(25,15%,55%)] mt-1.5">
-                      Across {allCompPrices.length} data points
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-[13px] text-[hsl(25,15%,55%)]">No data yet</p>
-                )}
+            {filteredEmpty ? (
+              <div className="p-8 text-center">
+                <p className="text-[13px] text-[hsl(25,15%,55%)]">No analyses in this category.</p>
               </div>
+            ) : (
+              <>
+                <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-card/70 rounded-xl border border-[hsl(35,20%,88%)] p-4">
+                    <p className="text-[10px] font-medium text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2">Market Demand Level</p>
+                    {demandAgg.value ? (
+                      <>
+                        <span className={`inline-block px-3 py-1.5 rounded-lg text-[13px] font-semibold ${demandColors[demandAgg.value]}`}>
+                          {demandLabel[demandAgg.value]}
+                        </span>
+                        <p className="text-[11px] text-[hsl(25,15%,55%)] mt-2">
+                          Most common across {analysesCountLabel(demandAgg.total)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[13px] text-[hsl(25,15%,55%)]">No demand data yet</p>
+                    )}
+                  </div>
 
-              {/* Dominant demand */}
-              <div className="bg-card/70 rounded-xl border border-[hsl(35,20%,88%)] p-4">
-                <p className="text-[10px] font-medium text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2">Market Demand Level</p>
-                {topDemand ? (
-                  <>
-                    <span className={`inline-block px-3 py-1.5 rounded-lg text-[13px] font-semibold ${demandColors[topDemand]}`}>
-                      {demandLabel[topDemand]}
-                    </span>
-                    <p className="text-[11px] text-[hsl(25,15%,55%)] mt-2">Most common across products</p>
-                  </>
-                ) : (
-                  <p className="text-[13px] text-[hsl(25,15%,55%)]">No data yet</p>
-                )}
-              </div>
+                  <div className="bg-card/70 rounded-xl border border-[hsl(35,20%,88%)] p-4">
+                    <p className="text-[10px] font-medium text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2">Market Trend</p>
+                    {trendAgg.value ? (
+                      <>
+                        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${trendCfg.bg}`}>
+                          <TrendIcon className={`h-4 w-4 ${trendCfg.color}`} />
+                          <span className={`text-[13px] font-semibold ${trendCfg.color}`}>{trendCfg.label}</span>
+                        </div>
+                        <p className="text-[11px] text-[hsl(25,15%,55%)] mt-2">
+                          Based on {analysesCountLabel(trendAgg.total)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[13px] text-[hsl(25,15%,55%)]">No trend data yet</p>
+                    )}
+                  </div>
 
-              {/* Market trend */}
-              <div className="bg-card/70 rounded-xl border border-[hsl(35,20%,88%)] p-4">
-                <p className="text-[10px] font-medium text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2">Market Trend</p>
-                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${trendCfg.bg}`}>
-                  <TrendIcon className={`h-4 w-4 ${trendCfg.color}`} />
-                  <span className={`text-[13px] font-semibold ${trendCfg.color}`}>{trendCfg.label}</span>
+                  <div className="bg-card/70 rounded-xl border border-[hsl(35,20%,88%)] p-4">
+                    <p className="text-[10px] font-medium text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2">Reliable Market Data</p>
+                    {summary.reliablePercent != null ? (
+                      <>
+                        <p className="font-serif text-[hsl(25,40%,14%)] text-xl leading-none">{summary.reliablePercent}%</p>
+                        <p className="text-[11px] text-[hsl(25,15%,55%)] mt-2">
+                          {summary.reliableCount} of {analysesCountLabel(summary.total)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[13px] text-[hsl(25,15%,55%)]">No data yet</p>
+                    )}
+                  </div>
                 </div>
-                <p className="text-[11px] text-[hsl(25,15%,55%)] mt-2">
-                  {marketDataList.length > 0 ? `Based on ${marketDataList.length} recent searches` : 'Awaiting data'}
-                </p>
-              </div>
-            </div>
 
-            {/* Recent search queries */}
-            {recentMarketItems.length > 0 && (
-              <div className="px-6 pb-5">
-                <p className="text-[10px] text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2.5 font-medium">Recent Queries</p>
-                <div className="flex flex-wrap gap-2">
-                  {recentMarketItems.map((m, i) => m.tavily_query && (
-                    <span key={i} className="text-[11px] px-2.5 py-1 rounded-lg bg-card/80 border border-[hsl(35,20%,86%)] text-[hsl(25,25%,35%)] truncate max-w-xs">
-                      "{m.tavily_query.length > 60 ? m.tavily_query.slice(0, 60) + '…' : m.tavily_query}"
-                    </span>
-                  ))}
+                <div className="px-6 pb-5">
+                  <p className="text-[10px] text-[hsl(25,15%,55%)] uppercase tracking-[0.1em] mb-2.5 font-medium">Products Analyzed</p>
+                  {recentProducts.names.length === 0 ? (
+                    <p className="text-[13px] text-[hsl(25,15%,55%)]">No products in this view</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {recentProducts.names.map((name) => (
+                        <span
+                          key={name}
+                          title={name}
+                          className="text-[11px] px-2.5 py-1 rounded-lg bg-card/80 border border-[hsl(35,20%,86%)] text-[hsl(25,25%,35%)] truncate max-w-[220px]"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                      {recentProducts.extraCount > 0 && (
+                        <span className="text-[11px] px-2.5 py-1 rounded-lg bg-[hsl(38,35%,90%)] border border-[hsl(35,20%,84%)] text-[hsl(25,25%,38%)]">
+                          +{recentProducts.extraCount} more
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
+              </>
             )}
           </div>
 
-          {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard title="Avg Recommended" value={avgRecommended ? `$${avgRecommended.toFixed(2)}` : '—'} sub="Your AI-set price" icon={DollarSign} />
-            <KpiCard title="Avg Competitor" value={avgCompetitor ? `$${avgCompetitor.toFixed(2)}` : '—'} sub="Market benchmark" icon={BarChart2} />
-            <KpiCard title="Dominant Demand" value={topDemand ? demandLabel[topDemand] : '—'} sub="Most common signal" icon={TrendingUp} />
-            <KpiCard title="Avg Confidence" value={avgConfidence ? `${avgConfidence}%` : '—'} sub="AI signal strength" icon={Zap} />
+            <KpiCard title="Total Analyses" value={String(summary.total)} sub={category === ALL_CATEGORIES ? 'Your pricing history' : categoryLabel(category)} icon={BarChart2} />
+            <KpiCard title="Avg Recommended" value={summary.avgRecommended != null ? `$${summary.avgRecommended.toFixed(2)}` : '—'} sub="AI-set price" icon={DollarSign} />
+            <KpiCard title="Avg Confidence" value={summary.avgConfidence != null ? `${summary.avgConfidence}%` : '—'} sub="Signal strength" icon={Zap} />
+            <KpiCard
+              title="Reliable Market Data"
+              value={summary.reliablePercent != null ? `${summary.reliablePercent}%` : '—'}
+              sub={`${summary.reliableCount} of ${summary.total} with strong comps`}
+              icon={TrendingUp}
+            />
           </div>
 
-          {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-card rounded-2xl shadow-warm border border-[hsl(35,20%,88%)] p-6">
-              <p className="text-[10px] font-medium text-[hsl(25,15%,52%)] uppercase tracking-[0.12em] mb-1">Price Intelligence</p>
-              <h3 className="font-serif text-[hsl(25,40%,18%)] mb-5">Your Price vs Competitor</h3>
-              <div className="h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={priceChart} barSize={20} barGap={4} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                    <XAxis dataKey="category" tick={{ fontSize: 10, fill: 'hsl(25,15%,52%)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: 'hsl(25,15%,52%)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
-                    <Tooltip content={ChartTooltip} cursor={{ fill: 'hsl(38,35%,92%)', radius: 6 }} />
-                    <Bar dataKey="recommended" name="Recommended" radius={[4,4,0,0]} fill="hsl(25,40%,28%)" />
-                    <Bar dataKey="competitor" name="Competitor Avg" radius={[4,4,0,0]} fill="hsl(38,50%,65%)" />
-                    <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'DM Sans', color: 'hsl(25,15%,52%)' }} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+            <PriceDistributionChart analyses={filteredAnalyses} />
 
             <div className="bg-card rounded-2xl shadow-warm border border-[hsl(35,20%,88%)] p-6">
               <p className="text-[10px] font-medium text-[hsl(25,15%,52%)] uppercase tracking-[0.12em] mb-1">Strategy Mix</p>
@@ -316,7 +347,7 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={stratChart} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} innerRadius={32} paddingAngle={3}>
-                      {stratChart.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                      {stratChart.map((entry, index) => <Cell key={index} fill={entry.fill} />)}
                     </Pie>
                     <Tooltip content={({ active, payload }) => active && payload?.length ? (
                       <div className="bg-[hsl(36,40%,97%)] border border-[hsl(35,18%,84%)] rounded-xl px-3 py-2 shadow-warm-md text-[12px]">
@@ -331,7 +362,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Demand chart */}
           {demandChart.length > 0 && (
             <div className="bg-card rounded-2xl shadow-warm border border-[hsl(35,20%,88%)] p-6">
               <p className="text-[10px] font-medium text-[hsl(25,15%,52%)] uppercase tracking-[0.12em] mb-1">Demand Signals</p>
@@ -342,8 +372,8 @@ export default function Dashboard() {
                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(25,15%,52%)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: 'hsl(25,15%,52%)', fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} allowDecimals={false} />
                     <Tooltip content={ChartTooltip} cursor={{ fill: 'hsl(38,35%,92%)', radius: 6 }} />
-                    <Bar dataKey="count" name="count" radius={[6,6,0,0]}>
-                      {demandChart.map((_, i) => <Cell key={i} fill={barColors[i % barColors.length]} />)}
+                    <Bar dataKey="count" name="count" radius={[6, 6, 0, 0]}>
+                      {demandChart.map((_, index) => <Cell key={index} fill={barColors[index % barColors.length]} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -351,7 +381,8 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── AI RECOMMENDATIONS ── */}
+          <RecentAnalysesList analyses={filteredAnalyses} />
+
           <div className="bg-card rounded-2xl shadow-warm border border-[hsl(35,20%,88%)] overflow-hidden">
             <div className="px-6 py-5 border-b border-[hsl(35,20%,90%)] flex items-center justify-between">
               <div className="flex items-start gap-3">

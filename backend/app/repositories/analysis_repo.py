@@ -60,3 +60,19 @@ class AnalysisRepository:
             return AnalysisListResponse(items=items, total=total, limit=limit, offset=offset)
         except SQLAlchemyError as exc:
             raise DatabaseError("Failed to list analyses") from exc
+
+    def delete_for_user(self, analysis_id: UUID, user_id: str) -> bool:
+        try:
+            stmt = select(Analysis).where(Analysis.id == analysis_id, Analysis.user_id == user_id)
+            row = self.session.scalar(stmt)
+            if row is None:
+                return False
+            self.session.delete(row)
+            self.session.commit()
+            return True
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            raise DatabaseError("Failed to delete analysis") from exc
+        except Exception:
+            self.session.rollback()
+            raise

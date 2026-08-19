@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import event, select
 
-from app.db.tables import Analysis, MarketData
+from app.db.tables import Analysis, MarketCache, MarketData
 from app.models.enums import (
     Category,
     DemandLevel,
@@ -15,7 +15,8 @@ from app.models.enums import (
 from app.repositories.analysis_repo import AnalysisRepository
 from app.repositories.errors import DatabaseError
 from app.repositories.mappers import analysis_from_create
-from tests.integration.db.conftest import _analysis, _market_data
+from app.repositories.market_cache_repo import MarketCacheRepository
+from tests.integration.db.conftest import _analysis, _cache_upsert, _market_data
 
 OWNER = "test-user-id"
 USER_A = "user-a"
@@ -184,3 +185,36 @@ class TestAnalysisOwnership:
         session.refresh(legacy)
         assert repo.get_by_id(legacy.id, USER_A) is None
         assert repo.get_by_id(legacy.id, USER_B) is None
+
+
+class TestAnalysisDelete:
+    def test_owner_can_delete_analysis_and_market_data(self, session):
+        repo = AnalysisRepository(session)
+        saved = repo.save_analysis(_analysis(product_name="To Delete", user_id=USER_A))
+        assert session.scalar(select(MarketData).where(MarketData.analysis_id == saved.id)) is not None
+
+        assert repo.delete_for_user(saved.id, USER_A) is True
+        assert repo.get_by_id(saved.id, USER_A) is None
+        assert session.scalar(select(Analysis).where(Analysis.id == saved.id)) is None
+        assert session.scalar(select(MarketData).where(MarketData.analysis_id == saved.id)) is None
+
+    def test_other_user_cannot_delete(self, session):
+        repo = AnalysisRepository(session)
+        saved = repo.save_analysis(_analysis(product_name="A Secret", user_id=USER_A))
+        assert repo.delete_for_user(saved.id, USER_B) is False
+        assert repo.get_by_id(saved.id, USER_A) is not None
+        assert session.scalar(select(MarketData).where(MarketData.analysis_id == saved.id)) is not None
+
+    def test_missing_id_returns_false(self, session):
+        assert AnalysisRepository(session).delete_for_user(uuid4(), USER_A) is False
+
+    def test_delete_does_not_touch_market_cache(self, session):
+        repo = AnalysisRepository(session)
+        saved = repo.save_analysis(_analysis(product_name="Cached Widget", user_id=USER_A))
+        cache = MarketCacheRepository(session).upsert(_cache_upsert())
+        cache_id = cache.id
+
+        assert repo.delete_for_user(saved.id, USER_A) is True
+        remaining = session.scalar(select(MarketCache).where(MarketCache.id == cache_id))
+        assert remaining is not None
+        assert remaining.cache_key == cache.cache_key

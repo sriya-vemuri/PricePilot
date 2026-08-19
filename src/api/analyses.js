@@ -42,3 +42,13 @@ export async function getAnalysisById(id) {
     method: 'GET',
   });
 }
+
+/**
+ * Delete one analysis owned by the current user.
+ * @param {string} id
+ */
+export async function deleteAnalysis(id) {
+  return apiRequest(`/api/analyses/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}

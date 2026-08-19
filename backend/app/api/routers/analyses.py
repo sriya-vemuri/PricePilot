@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.api.deps import get_analysis_orchestrator, get_analysis_repository
 from app.api.errors import AnalysisNotFoundError
@@ -42,3 +42,15 @@ def get_analysis(
     if result is None:
         raise AnalysisNotFoundError(analysis_id)
     return result
+
+
+@router.delete("/{analysis_id}", status_code=204)
+def delete_analysis(
+    analysis_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    repo: AnalysisRepository = Depends(get_analysis_repository),
+) -> Response:
+    deleted = repo.delete_for_user(analysis_id, current_user.user_id)
+    if not deleted:
+        raise AnalysisNotFoundError(analysis_id)
+    return Response(status_code=204)

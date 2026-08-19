@@ -16,6 +16,30 @@ const demandConfig = {
   very_high: { width: '95%', label: 'Very High', color: 'bg-[hsl(150,42%,40%)]' },
 };
 
+/**
+ * Split backend summaries like "Pricing: ... | Trend: ... | Demand: ..."
+ * into labeled sections for display. Unlabeled paragraphs stay as a single block.
+ *
+ * @param {unknown} raw
+ * @returns {{ label: string | null; body: string }[]}
+ */
+function parseMarketSummary(raw) {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text) return [];
+
+  const parts = text.includes('|')
+    ? text.split('|').map((part) => part.trim()).filter(Boolean)
+    : text.split(/(?=\b(?:Pricing|Trend|Demand)\s*:)/i).map((part) => part.trim()).filter(Boolean);
+
+  return parts.map((part) => {
+    const labeled = part.match(/^([A-Za-z][A-Za-z0-9 /&-]{0,24}):\s*([\s\S]*)$/);
+    if (labeled && labeled[2].trim()) {
+      return { label: labeled[1].trim(), body: labeled[2].trim() };
+    }
+    return { label: null, body: part };
+  }).filter((segment) => segment.body);
+}
+
 export default function MarketInsights({ marketData }) {
   if (!marketData) return null;
 
@@ -27,6 +51,13 @@ export default function MarketInsights({ marketData }) {
     marketData.competitor_price_2,
     marketData.competitor_price_3,
   ].filter(Boolean);
+  const summarySegments = parseMarketSummary(marketData.summary);
+  const summaryContext = summarySegments.filter(
+    (segment) => !segment.label || !/^(trend|demand)$/i.test(segment.label),
+  );
+  const summarySignals = summarySegments.filter(
+    (segment) => segment.label && /^(trend|demand)$/i.test(segment.label),
+  );
 
   return (
     <div className="bg-card rounded-2xl shadow-warm border border-[hsl(35,20%,88%)] overflow-hidden">
@@ -36,13 +67,43 @@ export default function MarketInsights({ marketData }) {
       </div>
 
       <div className="p-8 space-y-8">
-        {/* Summary */}
-        <div>
-          <p className="text-[11px] font-medium text-[hsl(25,20%,48%)] uppercase tracking-[0.1em] mb-3">Market Summary</p>
-          <p className="text-[14px] text-[hsl(25,25%,22%)] leading-relaxed">{marketData.summary}</p>
-        </div>
+        {summarySegments.length > 0 ? (
+          <div>
+            <p className="text-[11px] font-medium text-[hsl(25,20%,48%)] uppercase tracking-[0.1em] mb-3">Market Summary</p>
+            <div className="space-y-3">
+              {summaryContext.map((segment, i) => (
+                <div
+                  key={`${segment.label ?? 'summary'}-${i}`}
+                  className="rounded-xl bg-[hsl(38,35%,93%)] border border-[hsl(35,20%,87%)] p-4"
+                >
+                  {segment.label ? (
+                    <p className="text-[10px] font-medium text-[hsl(25,15%,52%)] uppercase tracking-[0.1em] mb-2">
+                      {segment.label}
+                    </p>
+                  ) : null}
+                  <p className="text-[13px] text-[hsl(25,25%,22%)] leading-relaxed">{segment.body}</p>
+                </div>
+              ))}
+              {summarySignals.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {summarySignals.map((segment, i) => (
+                    <div
+                      key={`${segment.label}-${i}`}
+                      className="rounded-xl bg-[hsl(38,35%,93%)] border border-[hsl(35,20%,87%)] p-4"
+                    >
+                      <p className="text-[10px] font-medium text-[hsl(25,15%,52%)] uppercase tracking-[0.1em] mb-2">
+                        {segment.label}
+                      </p>
+                      <p className="text-[13px] text-[hsl(25,25%,22%)] leading-relaxed">{segment.body}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
-        <div className="h-px bg-[hsl(35,20%,90%)]" />
+        {summarySegments.length > 0 ? <div className="h-px bg-[hsl(35,20%,90%)]" /> : null}
 
         {/* Trend + Demand */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

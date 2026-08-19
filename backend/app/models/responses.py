@@ -56,6 +56,7 @@ class MarketDataSummary(BaseModel):
     competitor_price_1: float | None = None
     competitor_price_2: float | None = None
     competitor_price_3: float | None = None
+    has_reliable_data: bool = False
 
 
 class AnalysisSummaryResponse(BaseModel):
@@ -66,6 +67,7 @@ class AnalysisSummaryResponse(BaseModel):
     product_name: str
     category: Category
     strategy: Strategy
+    baseline_price: float
     recommended_price: float
     competitor_avg_price: float | None = None
     confidence_score: int

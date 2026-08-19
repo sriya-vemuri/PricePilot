@@ -118,10 +118,8 @@ export default function Results() {
         </div>
       )}
 
-      {/* Pricing Rationale — full width, above the numbers */}
-      <PricingRationale analysis={analysis} />
+      <MarketInsights marketData={marketData} />
 
-      {/* Price + Confidence row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <PriceGauge
@@ -137,11 +135,9 @@ export default function Results() {
         <ConfidenceMeter score={analysis.confidence_score} explanation={analysis.confidence_explanation} />
       </div>
 
-      {/* Reasoning trace — nested market_data replaces the old second fetch */}
-      <ReasoningTrace analysis={analysis} marketData={marketData} />
+      <PricingRationale analysis={analysis} />
 
-      {/* Market insights */}
-      <MarketInsights marketData={marketData} />
+      <ReasoningTrace analysis={analysis} />
     </div>
   );
 }
