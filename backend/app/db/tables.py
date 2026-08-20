@@ -31,7 +31,7 @@ class Analysis(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     cost: Mapped[Decimal] = mapped_column(Money(), nullable=False)
     target_margin: Mapped[Decimal] = mapped_column(MarginPercent(), nullable=False)
-    target_market: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_market: Mapped[str] = mapped_column(String(500), nullable=False)
     strategy: Mapped[str] = mapped_column(String(50), nullable=False)
     pricing_mode: Mapped[str] = mapped_column(String(20), nullable=False)
 
@@ -126,7 +126,7 @@ class MarketCache(Base):
 
     product_name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
-    target_market: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_market: Mapped[str] = mapped_column(String(500), nullable=False)
     pricing_mode: Mapped[str] = mapped_column(String(20), nullable=False)
 
     candidate_prices: Mapped[list[Any]] = mapped_column(JSONList, nullable=False, default=list)

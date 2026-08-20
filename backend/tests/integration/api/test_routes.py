@@ -50,6 +50,26 @@ class TestCreateAnalysis:
         assert body["market_data"]["has_reliable_data"] is True
         assert body["product_name"] == CREATE_PAYLOAD["product_name"]
 
+    def test_target_market_accepts_500_characters(self, tmp_path):
+        market = "x" * 500
+        with api_client(unique_tmp(tmp_path)) as client:
+            response = client.post(
+                "/api/analyses",
+                json={**CREATE_PAYLOAD, "target_market": market},
+            )
+        assert response.status_code == 201
+        assert response.json()["target_market"] == market
+
+    def test_target_market_rejects_over_500_characters(self, tmp_path):
+        with api_client(unique_tmp(tmp_path)) as client:
+            response = client.post(
+                "/api/analyses",
+                json={**CREATE_PAYLOAD, "target_market": "x" * 501},
+            )
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error"] == "validation_error"
+        assert "Target market must be 500 characters or fewer." in str(body)
     def test_create_fallback_analysis(self, tmp_path):
         market = FakeMarketResearch(_empty_market())
         with api_client(unique_tmp(tmp_path), market=market) as client:

@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, inspect, text
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
-HEAD_REVISION = "0002_add_analysis_user_id"
+HEAD_REVISION = "0003_widen_target_market"
 
 
 def _alembic_config(db_url: str) -> Config:

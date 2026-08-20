@@ -8,6 +8,7 @@ from app.models.enums import Category, Strategy
 # The pricing engine must not silently convert 0 to 1% or 30%.
 _DEFAULT_TARGET_MARGIN = Decimal("30")
 _DEFAULT_TARGET_MARKET = "United States"
+TARGET_MARKET_MAX_LENGTH = 500
 
 
 class CreateAnalysisRequest(BaseModel):
@@ -17,7 +18,7 @@ class CreateAnalysisRequest(BaseModel):
     category: Category
     cost: Decimal = Field(gt=0)
     target_margin: Decimal = Field(default=_DEFAULT_TARGET_MARGIN, ge=0, le=95)
-    target_market: str = Field(default=_DEFAULT_TARGET_MARKET, max_length=100)
+    target_market: str = Field(default=_DEFAULT_TARGET_MARKET)
     strategy: Strategy
 
     @field_validator("product_name")
@@ -36,6 +37,6 @@ class CreateAnalysisRequest(BaseModel):
         trimmed = value.strip()
         if not trimmed:
             return _DEFAULT_TARGET_MARKET
-        if len(trimmed) > 100:
-            raise ValueError("target_market must be at most 100 characters")
+        if len(trimmed) > TARGET_MARKET_MAX_LENGTH:
+            raise ValueError("Target market must be 500 characters or fewer.")
         return trimmed
