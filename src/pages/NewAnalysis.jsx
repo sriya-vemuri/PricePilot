@@ -5,7 +5,7 @@ import { createAnalysis } from '@/api/analyses';
 import { ApiError } from '@/api/errors';
 import { Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import ProductForm from '../components/analysis/ProductForm';
+import ProductForm, { TARGET_MARKET_MAX_LENGTH } from '../components/analysis/ProductForm';
 
 const initialForm = {
   name: '',
@@ -15,6 +15,8 @@ const initialForm = {
   target_market: '',
   strategy: 'balanced',
 };
+
+const TARGET_MARKET_TOO_LONG = 'Target market must be 500 characters or fewer.';
 
 export default function NewAnalysis() {
   const [form, setForm] = useState(initialForm);
@@ -29,6 +31,14 @@ export default function NewAnalysis() {
 
   const handleGenerate = async () => {
     if (!canSubmit || loading) return;
+
+    const targetMarket = (form.target_market || '').trim() || 'United States';
+    if (targetMarket.length > TARGET_MARKET_MAX_LENGTH) {
+      setErrorMessage(TARGET_MARKET_TOO_LONG);
+      toast.error(TARGET_MARKET_TOO_LONG);
+      return;
+    }
+
     setLoading(true);
     setErrorMessage('');
 
@@ -38,7 +48,7 @@ export default function NewAnalysis() {
         category: form.category,
         cost,
         target_margin: Number.isFinite(targetMargin) ? targetMargin : 30,
-        target_market: (form.target_market || '').trim() || 'United States',
+        target_market: targetMarket,
         strategy: form.strategy,
       });
 

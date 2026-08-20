@@ -35,8 +35,14 @@ const strategies = [
 
 const fieldClass = "w-full px-4 py-3 rounded-xl border border-[hsl(35,20%,84%)] bg-[hsl(38,35%,97%)] text-[14px] text-[hsl(25,25%,18%)] placeholder:text-[hsl(25,15%,62%)] focus:outline-none focus:border-[hsl(25,40%,40%)] focus:ring-2 focus:ring-[hsl(25,40%,40%)]/10 transition-all duration-200";
 
+/** Must match backend CreateAnalysisRequest TARGET_MARKET_MAX_LENGTH. */
+export const TARGET_MARKET_MAX_LENGTH = 500;
+
 export default function ProductForm({ form, setForm }) {
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const targetMarketValue = typeof form.target_market === 'string' ? form.target_market : '';
+  const targetMarketLength = targetMarketValue.length;
+  const nearLimit = targetMarketLength > 450;
 
   return (
     <div className="space-y-7">
@@ -102,13 +108,34 @@ export default function ProductForm({ form, setForm }) {
 
       {/* Target Market */}
       <div className="space-y-2">
-        <label className="text-[11px] font-medium text-[hsl(25,20%,45%)] uppercase tracking-[0.1em]">Target Market</label>
+        <div className="flex items-end justify-between gap-3">
+          <label className="text-[11px] font-medium text-[hsl(25,20%,45%)] uppercase tracking-[0.1em]">
+            Target Market
+          </label>
+          <span className="text-[11px] text-[hsl(25,15%,58%)]">Max 500 characters</span>
+        </div>
         <textarea
-          className={`${fieldClass} h-24 resize-none leading-relaxed`}
+          className={`${fieldClass} min-h-[6.5rem] resize-none leading-relaxed`}
           placeholder="Describe your ideal customer segment and market context..."
-          value={form.target_market}
-          onChange={(e) => update('target_market', e.target.value)}
+          value={targetMarketValue}
+          maxLength={TARGET_MARKET_MAX_LENGTH}
+          rows={4}
+          onChange={(e) => {
+            const next = e.target.value.slice(0, TARGET_MARKET_MAX_LENGTH);
+            update('target_market', next);
+          }}
         />
+        <div className="flex justify-end">
+          <span
+            className={`text-[11px] tabular-nums ${
+              nearLimit
+                ? 'font-medium text-[hsl(25,40%,28%)]'
+                : 'text-[hsl(25,15%,58%)]'
+            }`}
+          >
+            {targetMarketLength} / {TARGET_MARKET_MAX_LENGTH}
+          </span>
+        </div>
       </div>
 
       {/* Strategy Selector */}
